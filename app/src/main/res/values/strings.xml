@@ -2,4 +2,6 @@
   <string name="app_name">Lineman Template</string>
   <!-- เปลี่ยน URL ตรงนี้ได้ -->
   <string name="start_url">https://errortoken.github.io/test/</string>
+  <string name="github_owner">errortoken</string>
+  <string name="github_repo">lineman-auto-update-template</string>
 </resources>

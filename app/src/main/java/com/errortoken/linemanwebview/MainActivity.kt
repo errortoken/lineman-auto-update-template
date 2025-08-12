@@ -64,7 +64,7 @@ class MainActivity : AppCompatActivity() {
     // เช็คอัปเดตจาก GitHub Releases
     Thread {
       try {
-        val (latestCode, apkUrl) = fetchLatest("$REPO_OWNER", "$REPO_NAME")
+        val (latestCode, apkUrl) = fetchLatest(getString(R.string.github_owner), getString(R.string.github_repo))
         val current = packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
         if (latestCode > current && apkUrl.isNotEmpty()) {
           runOnUiThread { downloadAndInstall(apkUrl) }
@@ -81,7 +81,7 @@ class MainActivity : AppCompatActivity() {
     }, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
   }
 
-  private fun fetchLatest(owner: String, repo: String): Pair<Int,String> {
+  private fun fetchLatest(getString(R.string.github_owner), getString(R.string.github_repo)): Pair<Int,String> {
     val api = "https://api.github.com/repos/$owner/$repo/releases/latest"
     val conn = URL(api).openConnection() as HttpURLConnection
     conn.connectTimeout = 8000; conn.readTimeout = 8000
