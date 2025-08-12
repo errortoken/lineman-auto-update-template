@@ -1,0 +1,4 @@
+<resources>
+  <string name="app_name">Lineman Auto Update</string>
+  <string name="start_url">https://errortoken.github.io/test/</string>
+</resources>
