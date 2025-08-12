@@ -2,16 +2,13 @@ package com.errortoken.linemanwebview
 
 import android.annotation.SuppressLint
 import android.app.DownloadManager
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
+import android.content.*
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.webkit.*
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -19,7 +16,7 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
   private lateinit var webView: WebView
   private var downloadId: Long = -1L
 
@@ -28,21 +25,38 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     setContentView(R.layout.activity_main)
 
+    WebView.setWebContentsDebuggingEnabled(true)
+
     webView = findViewById(R.id.webview)
     with(webView.settings) {
       javaScriptEnabled = true
       domStorageEnabled = true
-      cacheMode = WebSettings.LOAD_DEFAULT
+      databaseEnabled = true
+      setSupportZoom(true)
       useWideViewPort = true
       loadWithOverviewMode = true
+      mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
     }
-    webView.webViewClient = WebViewClient()
+    webView.webViewClient = object : WebViewClient() {
+      override fun onReceivedError(
+        view: WebView, request: WebResourceRequest, error: WebResourceError
+      ) {
+        view.loadData(
+          "<html><body style='font-family:sans-serif;color:#fff;background:#121212;padding:24px'>"+
+          "<h3>Load failed</h3><p>${error.description}</p></body></html>",
+          "text/html","utf-8"
+        )
+      }
+    }
     webView.webChromeClient = WebChromeClient()
-    webView.loadUrl(getString(R.string.start_url))
 
+    val startUrl = getString(R.string.start_url)
+    webView.loadUrl(startUrl)
+
+    // ตรวจอัปเดต (ไม่ทำงานบนเธรดหลัก)
     Thread {
       try {
-        val (latestCode, apkUrl) = fetchLatestFromGitHub("errortoken", "lineman-auto-update-template")
+        val (latestCode, apkUrl) = fetchLatestFromGitHub("errortoken","lineman-auto-update-template")
         val current = packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
         if (latestCode > current && apkUrl.isNotEmpty()) {
           runOnUiThread {
@@ -54,7 +68,7 @@ class MainActivity : ComponentActivity() {
               .show()
           }
         }
-      } catch (_: Exception) { }
+      } catch (_: Exception) {}
     }.start()
 
     registerReceiver(object: BroadcastReceiver() {
@@ -65,7 +79,7 @@ class MainActivity : ComponentActivity() {
     }, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
   }
 
-  private fun fetchLatestFromGitHub(owner: String, repo: String): Pair<Int, String> {
+  private fun fetchLatestFromGitHub(owner: String, repo: String): Pair<Int,String> {
     val api = "https://api.github.com/repos/$owner/$repo/releases/latest"
     val conn = URL(api).openConnection() as HttpURLConnection
     conn.connectTimeout = 8000; conn.readTimeout = 8000
@@ -73,17 +87,15 @@ class MainActivity : ComponentActivity() {
     conn.inputStream.use { ins ->
       val text = BufferedReader(InputStreamReader(ins)).readText()
       val json = JSONObject(text)
-      val tag = json.optString("tag_name", "v0")
+      val tag = json.optString("tag_name","v0")
       val code = tag.trim().removePrefix("v").toIntOrNull() ?: 0
       var apk = ""
       val assets = json.optJSONArray("assets")
       if (assets != null) {
         for (i in 0 until assets.length()) {
           val a = assets.getJSONObject(i)
-          val name = a.optString("name", "")
-          if (name.endsWith(".apk")) {
-            apk = a.optString("browser_download_url", "")
-            break
+          if (a.optString("name","").endsWith(".apk")) {
+            apk = a.optString("browser_download_url",""); break
           }
         }
       }
@@ -94,8 +106,7 @@ class MainActivity : ComponentActivity() {
   private fun downloadAndInstall(url: String) {
     try {
       val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
-      val uri = Uri.parse(url)
-      val req = DownloadManager.Request(uri)
+      val req = DownloadManager.Request(Uri.parse(url))
         .setTitle("Downloading update")
         .setDescription("Please wait...")
         .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "update.apk")
@@ -111,7 +122,8 @@ class MainActivity : ComponentActivity() {
     if (c.moveToFirst() && c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) == DownloadManager.STATUS_SUCCESSFUL) {
       val uri = dm.getUriForDownloadedFile(id)
       val install = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-        data = uri; flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+        data = uri
+        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
       }
       startActivity(install)
     }
