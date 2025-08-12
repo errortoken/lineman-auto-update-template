@@ -1,134 +1,91 @@
 package com.errortoken.linemanwebview
 
 import android.annotation.SuppressLint
-import android.app.DownloadManager
-import android.content.*
-import android.database.Cursor
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
-import android.view.WindowInsetsController
-import android.webkit.*
-import androidx.activity.enableEdgeToEdge
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
-  private lateinit var webView: WebView
-  private lateinit var refresh: SwipeRefreshLayout
-  private var downloadId: Long = -1L
 
-  @SuppressLint("SetJavaScriptEnabled")
-  override fun onCreate(savedInstanceState: Bundle?) {
-    enableEdgeToEdge()
-    super.onCreate(savedInstanceState)
-    setContentView(R.layout.activity_main)
+    private lateinit var web: WebView
+    private lateinit var ghOwner: String
+    private lateinit var ghRepo: String
 
-    window.insetsController?.systemBarsBehavior =
-      WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    @SuppressLint("SetJavaScriptEnabled")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        web = WebView(this)
+        setContentView(web)
 
-    WebView.setWebContentsDebuggingEnabled(true)
+        ghOwner = getString(R.string.github_owner)
+        ghRepo  = getString(R.string.github_repo)
 
-    refresh = findViewById(R.id.refresh)
-    webView = findViewById(R.id.webview)
+        val ws: WebSettings = web.settings
+        ws.javaScriptEnabled = true
+        ws.domStorageEnabled = true
+        ws.cacheMode = WebSettings.LOAD_DEFAULT
+        ws.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
 
-    with(webView.settings) {
-      javaScriptEnabled = true
-      domStorageEnabled = true
-      databaseEnabled = true
-      useWideViewPort = true
-      loadWithOverviewMode = true
-      setSupportZoom(true)
-      mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-    }
-    webView.webViewClient = object : WebViewClient() {
-      override fun onPageFinished(view: WebView?, url: String?) {
-        refresh.isRefreshing = false
-      }
-      override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
-        refresh.isRefreshing = false
-      }
-    }
-    webView.webChromeClient = WebChromeClient()
-
-    refresh.setOnRefreshListener { webView.reload() }
-
-    val startUrl = getString(R.string.start_url)
-    webView.loadUrl(startUrl)
-
-    // เช็คอัปเดตจาก GitHub Releases
-    Thread {
-      try {
-        val (latestCode, apkUrl) = fetchLatest(getString(R.string.github_owner), getString(R.string.github_repo))
-        val current = packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
-        if (latestCode > current && apkUrl.isNotEmpty()) {
-          runOnUiThread { downloadAndInstall(apkUrl) }
+        web.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val uri = request?.url ?: return false
+                // เปิดลิงก์ภายนอกนอกเว็บแอป
+                val host = uri.host ?: ""
+                if (!host.contains("github.io") && !host.contains("yourdomain.com")) {
+                    startActivity(Intent(Intent.ACTION_VIEW, uri))
+                    return true
+                }
+                return false
+            }
         }
-      } catch (_: Exception) {}
-    }.start()
 
-    // รับการแจ้งเตือนดาวน์โหลดเสร็จ
-    registerReceiver(object: BroadcastReceiver() {
-      override fun onReceive(context: Context?, intent: Intent?) {
-        val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) ?: return
-        if (id == downloadId) onDownloadComplete(id)
-      }
-    }, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
-  }
+        // โหลดเว็บของคุณ
+        web.loadUrl("https://errortoken.github.io/test/")
 
-  private fun fetchLatest(getString(R.string.github_owner), getString(R.string.github_repo)): Pair<Int,String> {
-    val api = "https://api.github.com/repos/$owner/$repo/releases/latest"
-    val conn = URL(api).openConnection() as HttpURLConnection
-    conn.connectTimeout = 8000; conn.readTimeout = 8000
-    conn.setRequestProperty("Accept", "application/vnd.github+json")
-    conn.inputStream.use {
-      val text = BufferedReader(InputStreamReader(it)).readText()
-      val json = JSONObject(text)
-      val tag = json.optString("tag_name","v0")
-      val code = tag.removePrefix("v").toIntOrNull() ?: 0
-      var apk = ""
-      val assets = json.optJSONArray("assets")
-      if (assets != null) for (i in 0 until assets.length()) {
-        val a = assets.getJSONObject(i)
-        if (a.optString("name","").endsWith(".apk")) {
-          apk = a.optString("browser_download_url",""); break
+        // เช็คอัพเดตแบบเบื้องหลัง (ไม่บังคับ)
+        lifecycleScope.launchWhenStarted {
+            runCatching { fetchLatest(ghOwner, ghRepo) }.onSuccess { latest ->
+                // คุณจะเลือกทำอะไรกับข้อมูล release ก็ได้
+                // เช่น แสดง snackbar หรือเปิดหน้า release
+                // ตัวอย่าง (คอมเมนต์ไว้):
+                // startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(latest.htmlUrl)))
+            }
         }
-      }
-      return Pair(code, apk)
     }
-  }
 
-  private fun downloadAndInstall(url: String) {
-    try {
-      val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
-      val req = DownloadManager.Request(Uri.parse(url))
-        .setTitle("Downloading update") .setDescription("Please wait…")
-        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "lineman_update.apk")
-        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-      downloadId = dm.enqueue(req)
-    } catch (_: Exception) { }
-  }
+    data class ReleaseInfo(val tag: String, val htmlUrl: String)
 
-  private fun onDownloadComplete(id: Long) {
-    val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
-    val c: Cursor = dm.query(DownloadManager.Query().setFilterById(id))
-    if (c.moveToFirst() && c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) == DownloadManager.STATUS_SUCCESSFUL) {
-      val uri = dm.getUriForDownloadedFile(id)
-      val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-        data = uri
-        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
-      }
-      startActivity(intent)
+    private suspend fun fetchLatest(owner: String, repo: String): ReleaseInfo = withContext(Dispatchers.IO) {
+        val api = "https://api.github.com/repos/$owner/$repo/releases/latest"
+        val conn = (URL(api).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 10000
+            readTimeout = 10000
+            setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+        }
+        conn.inputStream.use { ins ->
+            val body = ins.bufferedReader().readText()
+            val o = JSONObject(body)
+            ReleaseInfo(
+                tag = o.optString("tag_name"),
+                htmlUrl = o.optString("html_url")
+            )
+        }
     }
-    c.close()
-  }
 
-  override fun onBackPressed() {
-    if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
-  }
+    override fun onBackPressed() {
+        if (this::web.isInitialized && web.canGoBack()) web.goBack() else super.onBackPressed()
+    }
 }
