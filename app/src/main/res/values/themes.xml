@@ -4,4 +4,8 @@
     <item name="android:windowSplashScreenBackground">#121212</item>
     <item name="android:forceDarkAllowed">true</item>
   </style>
+  <style name="Theme.Lineman.Splash" parent="Theme.Material3.DayNight.NoActionBar">
+    <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+    <item name="android:windowSplashScreenBackground">#121212</item>
+  </style>
 </resources>

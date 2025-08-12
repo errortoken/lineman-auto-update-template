@@ -1,4 +1,5 @@
 <resources>
-  <string name="app_name">Lineman Auto Update</string>
+  <string name="app_name">Lineman Template</string>
+  <!-- เปลี่ยน URL ตรงนี้ได้ -->
   <string name="start_url">https://errortoken.github.io/test/</string>
 </resources>
