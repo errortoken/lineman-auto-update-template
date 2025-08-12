@@ -12,17 +12,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
 
-      - name: Android SDK + Build Tools
-        uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v3
 
       - name: Accept licenses
         run: yes | sdkmanager --licenses
@@ -68,11 +63,23 @@ jobs:
           CODE=$(sed -n 's/.*versionCode[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' app/build.gradle.kts | head -n1)
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release (upload APK)
-        uses: softprops/action-gh-release@v2
+      # ✅ โชว์ใน Actions > Artifacts ด้วย
+      - name: Upload APK (Artifacts)
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: "v${{ steps.ver.outputs.code }}"
-          name: "Release v${{ steps.ver.outputs.code }}"
-          files: "app/build/outputs/apk/release/*.apk"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: app-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      # ✅ แนบไปที่ Release ด้วย
+      - name: Create/Update GitHub Release (upload APK)
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ steps.ver.outputs.code }}
+          name: Release v${{ steps.ver.outputs.code }}
+          makeLatest: true
+          allowUpdates: true
+          replacesArtifacts: true
+          artifacts: "app/build/outputs/apk/release/*.apk"
+          token: ${{ secrets.GITHUB_TOKEN }}
